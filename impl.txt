@@ -1,0 +1,26 @@
+Okay so how is this gonna work...
+
+So first, lexing. What kind of alphabet are we looking at?
+
+Numbers: 0-9
+	Decimals: .
+	(Commas not allowed because it would be tough to distinguish commans
+	from function arguments)
+
+Grouping:
+	Parens: ( )
+	Brackets: [ ]
+
+Operators/Functions:
+	Anything that is not a number that is grouped and not whitespace
+
+
+
+So let's say we have a definition like follows:
+
+enum Expr {
+	Value(Rational),
+	BinOp(Operator, Expr, Expr),
+	UnaryOp(Operator, Expr)
+	Func(Vector<Expr>)
+}
