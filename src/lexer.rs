@@ -1,25 +1,52 @@
-/// The lexer is responsible for converting user input to a
-/// well defined context-free grammar.
+//! The lexer is responsible for converting user input to a
+//! well defined context-free grammar.
 
 #[derive(PartialEq)]
 #[derive(Debug)]
-enum Num {
+
+ /// This defines the "types" of numbers that are recognized. Currently,
+/// only integers and decimals are distinguished. In the future, this could
+/// be extended to include different bases like hex or binary numbers.
+///
+/// **NOTE** It's not immediately clear that we even need to distinguish
+/// integers from decimals since one is a subset of the other. Once I have
+/// the system fully fleshed out, if the distinction still seems
+/// superfluous this could be removed.
+pub enum Num {
+    /// An integer. Due to how the "negation" operation is handled, these will
+    /// actually always be lexed as positive numbers.
     Integer(i64),
+
+    /// A decimal number. Consists of an integral part, decimal part, and
+    /// exponent. Like the integer, these will always be lexed as positive.
     Decimal(i64, u64, i16)
 }
 
 #[derive(PartialEq)]
 #[derive(Debug)]
+
+/// This defines the grammar that will be used by the parser to
+/// represent and evaluate mathematical expressions.
 pub enum Token {
+    /// Exactly what it sounds like. See lexer::Num
     Number(Num),
+    /// A single open parentheses
     OParen,
+    /// A single close parentheses
     CParen,
+    /// A single open bracket
     OBracket,
+    /// A single open bracket
     CBracket,
+    /// Any sequence of purely alpha characters. Could represent a variable or
+    /// function name.
     Word(String),
+    /// Any sequence of non-alpha/non-whitespace/non-numeric characters. Will
+    /// represent basic operations like "+", ">=" etc.
     Oper(String)
 }
 
+/// Calculate the decimal value of a decimal character, if applicable
 fn to_digit(c: char) -> Option<u8> {
     let d = c as u8;
     return match d {
@@ -28,6 +55,7 @@ fn to_digit(c: char) -> Option<u8> {
     }
 }
 
+/// Determine if the given character represents a decimal digit
 fn is_num(c : char) -> bool {
     return match to_digit(c) {
         Some(_) => true,
@@ -35,6 +63,7 @@ fn is_num(c : char) -> bool {
     }
 }
 
+/// Determine if the given character is an (upper or lower case) letter
 fn is_alpha(c: char) -> bool {
     let d = c as u8;
     return match d {
@@ -43,6 +72,7 @@ fn is_alpha(c: char) -> bool {
     }
 }
 
+/// Determine if the given character is a grouping symbol
 fn is_grouping(c: char) -> bool {
     return match c {
         ')' | '(' | '[' | ']' => true,
@@ -50,7 +80,12 @@ fn is_grouping(c: char) -> bool {
     }
 }
 
-fn lex_num<'a>(chars: &'a mut Vec<char>) -> Option<(Num, &'a mut Vec<char>)> {
+/// Given a vector of characters such that the left-most character is on top,
+/// attempt to extract a number from the front of the character list.
+/// If a valid number exists, parse it and return Some(n, cs) where n is the
+/// Num value parsed and cs is the remaining unlexed characters. Otherwise,
+/// return None.
+fn lex_num(chars: &mut Vec<char>) -> Option<(Num, &mut Vec<char>)> {
     let mut whole_num : i64 = 0;
     let mut decimal : u64 = 0;
     let mut exponent : i16 = 0;
@@ -84,24 +119,26 @@ fn lex_num<'a>(chars: &'a mut Vec<char>) -> Option<(Num, &'a mut Vec<char>)> {
             },
             ('.', None, false, false) => is_dec = true,
             _ => {
+                // We're done, but this character still needs to be lexed
                 chars.push(c);
                 break;
             }
         }
     }
 
-    // TODO: Maybe I don't need an option type? Need to consider how this can
-    // fail
-    if is_dec {
-        return Some((Num::Decimal(whole_num, decimal, exponent), chars));
-    } else {
-        return Some((Num::Integer(whole_num), chars));
+    return match is_dec {
+        true => Some((Num::Decimal(whole_num, decimal, exponent), chars)),
+        false => Some((Num::Integer(whole_num), chars))
     }
 }
-
-fn lex_word<'a>(chars: &'a mut Vec<char>) -> Option<(String, &'a mut Vec<char>)> {
+/// Given a vector of characters such that the left-most character is on top,
+/// attempt to extract a purely-alpha string of characters ("word") from the
+/// front of the character list. If a valid word exists, parse it and return
+/// Some(w, cs) where w is the word parsed and cs is the remaining unlexed
+/// characters. Otherwise, return None.
+fn lex_word(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
     let mut s = String::new();
-    
+
     while let Some(c) = chars.pop() {
         match is_alpha(c) {
             true => s.push(c),
@@ -118,9 +155,14 @@ fn lex_word<'a>(chars: &'a mut Vec<char>) -> Option<(String, &'a mut Vec<char>)>
     }
 }
 
-fn lex_oper<'a>(chars: &'a mut Vec<char>) -> Option<(String, &'a mut Vec<char>)> {
+/// Given a vector of characters such that the left-most character is on top,
+/// attempt to extract a non-alpha/non-num/non-whitespace string of characters
+/// ("operator") from the front of the character list. If a operator exists,
+/// parse it and return Some(o, cs) where o is the operator parsed and cs is
+/// the remaining unlexed characters. Otherwise, return None.
+fn lex_oper(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
     let mut s = String::new();
-    
+
     while let Some(c) = chars.pop() {
         match is_alpha(c) || is_num(c) || c == ' ' || is_grouping(c) {
             false => s.push(c),
@@ -137,6 +179,9 @@ fn lex_oper<'a>(chars: &'a mut Vec<char>) -> Option<(String, &'a mut Vec<char>)>
     }
 }
 
+/// Given a vector of characters such that the left-most character is on top,
+/// attempt to extract a sequence of Tokens according to the grammar defined
+/// above.
 fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
     match chars.pop() {
         None => return vec![],
@@ -171,19 +216,19 @@ fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
                         rest.insert(0, Token::Number(n));
                         return rest;
                     }
-                    
+
                     if let Some((s, _chars)) = lex_word(chars) {
                         let mut rest = _lex(_chars);
                         rest.insert(0, Token::Word(s));
                         return rest;
                     }
-                    
+
                     if let Some((o, _chars)) = lex_oper(chars) {
                         let mut rest = _lex(_chars);
                         rest.insert(0, Token::Oper(o));
                         return rest;
                     }
-                    
+
                     panic!("Lex error!");
                 }
             }
@@ -191,7 +236,9 @@ fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
     }
 }
 
-/// Converts a string into a list of tokens
+/// Given a string representing a mathematical something or other, extract
+/// a sequence of tokens that represent the string according to the grammar
+/// defined above.
 pub fn lex(text: String) -> Vec<Token> {
     let mut chars: Vec<char> = text.chars().collect();
 
@@ -230,7 +277,7 @@ mod tests {
 
         assert_eq!(res, expected);
     }
-    
+
     #[test]
     fn numbers() {
         let res = lex(quiet_from_str("1337"));
@@ -271,7 +318,7 @@ mod tests {
     #[test]
     fn expr() {
         let res = lex(quiet_from_str("2* 3.1415 >= 5"));
-        
+
         let sol = vec![Token::Number(Num::Integer(2)),
                        Token::Oper(quiet_from_str("*")),
                        Token::Number(Num::Decimal(3, 1415, 0)),
