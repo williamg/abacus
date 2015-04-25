@@ -85,7 +85,7 @@ fn is_grouping(c: char) -> bool {
 /// If a valid number exists, parse it and return Some(n, cs) where n is the
 /// Num value parsed and cs is the remaining unlexed characters. Otherwise,
 /// return None.
-fn lex_num(chars: &mut Vec<char>) -> Option<(Num, &mut Vec<char>)> {
+fn lex_num(chars: &mut Vec<char>) -> Option<Num> {
     let mut whole_num : i64 = 0;
     let mut decimal : u64 = 0;
     let mut exponent : i16 = 0;
@@ -126,9 +126,10 @@ fn lex_num(chars: &mut Vec<char>) -> Option<(Num, &mut Vec<char>)> {
         }
     }
 
-    return match is_dec {
-        true => Some((Num::Decimal(whole_num, decimal, exponent), chars)),
-        false => Some((Num::Integer(whole_num), chars))
+    if is_dec {
+        return Some(Num::Decimal(whole_num, decimal, exponent));
+    } else {
+        return Some(Num::Integer(whole_num));
     }
 }
 /// Given a vector of characters such that the left-most character is on top,
@@ -136,22 +137,22 @@ fn lex_num(chars: &mut Vec<char>) -> Option<(Num, &mut Vec<char>)> {
 /// front of the character list. If a valid word exists, parse it and return
 /// Some(w, cs) where w is the word parsed and cs is the remaining unlexed
 /// characters. Otherwise, return None.
-fn lex_word(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
+fn lex_word(chars: &mut Vec<char>) -> Option<String> {
     let mut s = String::new();
 
     while let Some(c) = chars.pop() {
-        match is_alpha(c) {
-            true => s.push(c),
-            false => {
-                chars.push(c);
-                break;
-            }
+        if is_alpha(c) {
+            s.push(c);
+        } else {
+            chars.push(c);
+            break;
         }
     }
 
-    return match s.is_empty() {
-        true => None,
-        false => Some((s, chars))
+    if s.is_empty() {
+        return None;
+    } else {
+        return Some(s);
     }
 }
 
@@ -160,22 +161,23 @@ fn lex_word(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
 /// ("operator") from the front of the character list. If a operator exists,
 /// parse it and return Some(o, cs) where o is the operator parsed and cs is
 /// the remaining unlexed characters. Otherwise, return None.
-fn lex_oper(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
+fn lex_oper(chars: &mut Vec<char>) -> Option<String> {
     let mut s = String::new();
 
     while let Some(c) = chars.pop() {
-        match is_alpha(c) || is_num(c) || c == ' ' || is_grouping(c) {
-            false => s.push(c),
-            true => {
-                chars.push(c);
-                break;
-            }
+        let notop = is_alpha(c) || is_num(c) || c == ' ' || is_grouping(c);
+        if notop {
+            chars.push(c);
+            break;
+        } else {
+            s.push(c);
         }
     }
 
-    return match s.is_empty() {
-        true => None,
-        false => Some((s, chars))
+    if s.is_empty() {
+        return None;
+    } else {
+        return Some(s);
     }
 }
 
@@ -183,57 +185,40 @@ fn lex_oper(chars: &mut Vec<char>) -> Option<(String, &mut Vec<char>)> {
 /// attempt to extract a sequence of Tokens according to the grammar defined
 /// above.
 fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
-    match chars.pop() {
-        None => return vec![],
-        Some(c) => {
-            match c {
-                '(' => {
-                    let mut rest = _lex(chars);
-                    rest.insert(0, Token::OParen);
-                    return rest;
-                },
-                ')' => {
-                    let mut rest = _lex(chars);
-                    rest.insert(0, Token::CParen);
-                    return rest;
-                },
-                '[' => {
-                    let mut rest = _lex(chars);
-                    rest.insert(0, Token::OBracket);
-                    return rest;
-                },
-                ']' => {
-                    let mut rest = _lex(chars);
-                    rest.insert(0, Token::CBracket);
-                    return rest;
-                },
-                ' ' => return _lex(chars),
-                _ => {
-                    chars.push(c);
+    let mut chars = chars;
+    let mut v : Vec<Token> = vec![];
 
-                    if let Some((n, _chars)) = lex_num(chars) {
-                        let mut rest = _lex(_chars);
-                        rest.insert(0, Token::Number(n));
-                        return rest;
-                    }
+    while let Some(c) = chars.pop() {
+        match c {
+            '(' => v.push(Token::OParen),
+            ')' => v.push(Token::CParen),
+            '[' => v.push(Token::OBracket),
+            ']' => v.push(Token::CBracket),
+            ' ' => continue,
+            _ => {
+                chars.push(c);
 
-                    if let Some((s, _chars)) = lex_word(chars) {
-                        let mut rest = _lex(_chars);
-                        rest.insert(0, Token::Word(s));
-                        return rest;
-                    }
-
-                    if let Some((o, _chars)) = lex_oper(chars) {
-                        let mut rest = _lex(_chars);
-                        rest.insert(0, Token::Oper(o));
-                        return rest;
-                    }
-
-                    panic!("Lex error!");
+                if let Some(n) = lex_num(&mut chars) {
+                    v.push(Token::Number(n));
+                    continue;
                 }
+
+                if let Some(s) = lex_word(&mut chars) {
+                    v.push(Token::Word(s));
+                    continue;
+                }
+
+                if let Some(o) = lex_oper(&mut chars) {
+                    v.push(Token::Oper(o));
+                    continue;
+                }
+
+                panic!("Lex error!");
             }
         }
     }
+
+    return v;
 }
 
 /// Given a string representing a mathematical something or other, extract
@@ -242,8 +227,8 @@ fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
 pub fn lex(text: String) -> Vec<Token> {
     let mut chars: Vec<char> = text.chars().collect();
 
-    // Rust pops from the end and pushes to the front. Reverse chars so
-    // the left most char is on top
+    // Rust pops and pushes from the back meaning the left-most char is on the
+    // "bottom". Reverse chars so the left most char is on top
     chars.reverse();
     return _lex(&mut chars);
 }
