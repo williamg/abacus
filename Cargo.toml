@@ -3,3 +3,6 @@
 name = "abacus"
 version = "0.0.1"
 authors = ["william <williamg.online@gmail.com>"]
+
+[dependencies]
+num = "*"

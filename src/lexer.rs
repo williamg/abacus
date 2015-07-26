@@ -3,8 +3,9 @@
 
 #[derive(PartialEq)]
 #[derive(Debug)]
+#[derive(Clone)]
 
- /// This defines the "types" of numbers that are recognized. Currently,
+/// This defines the "types" of numbers that are recognized. Currently,
 /// only integers and decimals are distinguished. In the future, this could
 /// be extended to include different bases like hex or binary numbers.
 ///
@@ -19,8 +20,10 @@ pub enum Num {
 
     /// A decimal number. Consists of an integral part, decimal part, and
     /// exponent. Like the integer, these will always be lexed as positive.
-    Decimal(i64, u64, i16)
+    Decimal(i64, u64, i8)
 }
+
+impl Copy for Num {}
 
 #[derive(PartialEq)]
 #[derive(Debug)]
@@ -38,6 +41,8 @@ pub enum Token {
     OBracket,
     /// A single open bracket
     CBracket,
+    /// A comma for separating arguments to a function
+    Comma,
     /// Any sequence of purely alpha characters. Could represent a variable or
     /// function name.
     Word(String),
@@ -82,15 +87,12 @@ fn is_grouping(c: char) -> bool {
 
 /// Given a vector of characters such that the left-most character is on top,
 /// attempt to extract a number from the front of the character list.
-/// If a valid number exists, parse it and return Some(n, cs) where n is the
-/// Num value parsed and cs is the remaining unlexed characters. Otherwise,
-/// return None.
+/// If a valid number exists, parse it and return it
 fn lex_num(chars: &mut Vec<char>) -> Option<Num> {
     let mut whole_num : i64 = 0;
     let mut decimal : u64 = 0;
-    let mut exponent : i16 = 0;
+    let mut exponent : i8 = 0;
     let mut is_dec = false;
-    let mut parsed_zeroes = false;
 
     match chars.last() {
         None => return None,
@@ -102,22 +104,17 @@ fn lex_num(chars: &mut Vec<char>) -> Option<Num> {
     }
 
     while let Some(c) = chars.pop() {
-        match (c, to_digit(c), is_dec, parsed_zeroes) {
-            (_, Some(d), false, false) => {
+        match (c, to_digit(c), is_dec) {
+            (_, Some(d), false) => {
                 whole_num *= 10;
                 whole_num += d as i64;
             },
-            (_, Some(0), true, false) => exponent -= 1,
-            (_, Some(d), true, false) => {
-                parsed_zeroes = true;
+            (_, Some(d), true) => {
+                exponent -= 1;
                 decimal *= 10;
                 decimal += d as u64;
             },
-            (_, Some(d), true, true) => {
-                decimal *= 10;
-                decimal += d as u64;
-            },
-            ('.', None, false, false) => is_dec = true,
+            ('.', None, false) => is_dec = true,
             _ => {
                 // We're done, but this character still needs to be lexed
                 chars.push(c);
@@ -194,6 +191,7 @@ fn _lex(chars: &mut Vec<char>) -> Vec<Token> {
             ')' => v.push(Token::CParen),
             '[' => v.push(Token::OBracket),
             ']' => v.push(Token::CBracket),
+            ',' => v.push(Token::Comma),
             ' ' => continue,
             _ => {
                 chars.push(c);
@@ -268,14 +266,14 @@ mod tests {
         let res = lex(quiet_from_str("1337"));
         assert_eq!(vec![Token::Number(Num::Integer(1337))], res);
 
-        let res = lex(quiet_from_str("98"));
+        let res = lex(quiet_from_str("0098"));
         assert_eq!(vec![Token::Number(Num::Integer(98))], res);
 
         let res = lex(quiet_from_str("3.1415"));
-        assert_eq!(vec![Token::Number(Num::Decimal(3, 1415, 0))], res);
+        assert_eq!(vec![Token::Number(Num::Decimal(3, 1415, -4))], res);
 
         let res = lex(quiet_from_str(".001"));
-        assert_eq!(vec![Token::Number(Num::Decimal(0, 1, -2))], res);
+        assert_eq!(vec![Token::Number(Num::Decimal(0, 1, -3))], res);
     }
 
     #[test]
@@ -306,7 +304,7 @@ mod tests {
 
         let sol = vec![Token::Number(Num::Integer(2)),
                        Token::Oper(quiet_from_str("*")),
-                       Token::Number(Num::Decimal(3, 1415, 0)),
+                       Token::Number(Num::Decimal(3, 1415, -4)),
                        Token::Oper(quiet_from_str(">=")),
                        Token::Number(Num::Integer(5))];
         assert_eq!(res, sol);
@@ -322,7 +320,7 @@ mod tests {
                        Token::Number(Num::Integer(2)),
                        Token::CParen,
                        Token::Oper(quiet_from_str("=")),
-                       Token::Number(Num::Decimal(2, 18, -1))];
+                       Token::Number(Num::Decimal(2, 18, -3))];
         assert_eq!(res, sol);
     }
 }
